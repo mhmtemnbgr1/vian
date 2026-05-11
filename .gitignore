@@ -1,0 +1,26 @@
+# Go derleme çıktıları
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+
+# Çalışma alanı dosyaları
+*.out
+
+# IDE/editor dosyaları
+.vscode/
+.idea/
+*.swp
+
+# Sistem dosyaları
+.DS_Store
+Thumbs.db
+
+# Gizli veya dış klasörler
+.gemini/
+
+# Git ile takip edilmemesi gereken diğer dosyalar
+
+# Kendi proje dosyalarınız hariç tutulmaz, main.go, cmd/ gibi klasörler takip edilir.
