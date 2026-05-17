@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+	"vian/ui"
 
 	"github.com/spf13/cobra"
 )
@@ -9,12 +11,17 @@ import (
 var rootCmd = &cobra.Command{
 	Use:   "vian",
 	Short: "Vian Ana Uygulama",
-	// Burası sadece terminale 'vian' yazınca çalışır
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("Şu an Vian'ın ana merkezindesin. Yardım için --help yazabilirsin.")
+		if err := ui.StartApp(); err != nil {
+			fmt.Printf("Arayüz başlatılırken hata oluştu: %v\n", err)
+			os.Exit(1)
+		}
 	},
 }
 
 func Execute() {
-	rootCmd.Execute()
+	if err := rootCmd.Execute(); err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
 }
