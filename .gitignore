@@ -24,3 +24,10 @@ Thumbs.db
 # Git ile takip edilmemesi gereken diğer dosyalar
 
 # Kendi proje dosyalarınız hariç tutulmaz, main.go, cmd/ gibi klasörler takip edilir.
+
+# Veritabanı ve İndirilen Dosyalar (GitHub'a atılmaması gerekenler)
+veri/
+indirilenler/
+gönderilecekler/
+*.db
+*.sqlite
