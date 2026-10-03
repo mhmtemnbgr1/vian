@@ -3,17 +3,33 @@ package network
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/pbkdf2"
 	"crypto/rand"
 	"crypto/sha256"
 	"errors"
 	"io"
 )
 
-// DeriveKey creates a 32-byte key from a password
-func DeriveKey(password string) []byte {
-	hash := sha256.Sum256([]byte(password))
-	return hash[:]
+const (
+	keyIterations = 200_000
+	saltSize      = 16
+)
+
+// DeriveKey parolayı PBKDF2-SHA256 ile tuzlayarak 32 baytlık anahtara çevirir.
+func DeriveKey(password string, salt []byte) ([]byte, error) {
+	return pbkdf2.Key(sha256.New, password, salt, keyIterations, 32)
 }
+
+// RandomBytes kriptografik olarak güvenli rastgele bayt üretir.
+func RandomBytes(n int) ([]byte, error) {
+	b := make([]byte, n)
+	if _, err := io.ReadFull(rand.Reader, b); err != nil {
+		return nil, err
+	}
+	return b, nil
+}
+
+func NewSalt() ([]byte, error) { return RandomBytes(saltSize) }
 
 // Encrypt encrypts data using AES-GCM
 func Encrypt(plaintext []byte, key []byte) ([]byte, error) {
@@ -32,8 +48,7 @@ func Encrypt(plaintext []byte, key []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	ciphertext := aesGCM.Seal(nonce, nonce, plaintext, nil)
-	return ciphertext, nil
+	return aesGCM.Seal(nonce, nonce, plaintext, nil), nil
 }
 
 // Decrypt decrypts AES-GCM encrypted data
@@ -54,10 +69,5 @@ func Decrypt(ciphertext []byte, key []byte) ([]byte, error) {
 	}
 
 	nonce, ciphertext := ciphertext[:nonceSize], ciphertext[nonceSize:]
-	plaintext, err := aesGCM.Open(nil, nonce, ciphertext, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return plaintext, nil
+	return aesGCM.Open(nil, nonce, ciphertext, nil)
 }

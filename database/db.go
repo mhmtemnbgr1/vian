@@ -5,14 +5,18 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+
 	_ "modernc.org/sqlite"
 )
 
 var db *sql.DB
 
-func InitDB() error {
-	dir := "veri"
-	os.MkdirAll(dir, os.ModePerm)
+// InitDB veritabanını dir klasöründe açar (yoksa oluşturur).
+func InitDB(dir string) error {
+	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+		return err
+	}
 	dbPath := filepath.Join(dir, "vian.db")
 
 	var err error
@@ -28,7 +32,8 @@ func InitDB() error {
 		sender TEXT,
 		content TEXT,
 		timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-	);`
+	);
+	CREATE INDEX IF NOT EXISTS idx_messages_room ON messages(room_name, id);`
 
 	_, err = db.Exec(createTableQuery)
 	return err
@@ -50,14 +55,25 @@ type Message struct {
 }
 
 func GetMessages(roomName string, limit int) ([]Message, error) {
+	return queryMessages(`SELECT sender, content, strftime('%d.%m %H:%M', timestamp, 'localtime')
+		FROM messages WHERE room_name = ? ORDER BY id DESC LIMIT ?`, roomName, limit)
+}
+
+// SearchMessages odanın geçmişinde (büyük/küçük harf duyarsız) metin arar.
+func SearchMessages(roomName, text string, limit int) ([]Message, error) {
+	esc := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(text)
+	return queryMessages(`SELECT sender, content, strftime('%d.%m %H:%M', timestamp, 'localtime')
+		FROM messages WHERE room_name = ? AND content LIKE ? ESCAPE '\' ORDER BY id DESC LIMIT ?`,
+		roomName, "%"+esc+"%", limit)
+}
+
+// queryMessages sonuçları kronolojik (eskiden yeniye) döndürür.
+func queryMessages(query string, args ...any) ([]Message, error) {
 	if db == nil {
 		return nil, fmt.Errorf("veritabanı başlatılmadı")
 	}
 
-	query := `SELECT sender, content, strftime('%H:%M', timestamp, 'localtime') as ts 
-			  FROM messages WHERE room_name = ? ORDER BY id DESC LIMIT ?`
-
-	rows, err := db.Query(query, roomName, limit)
+	rows, err := db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -71,8 +87,7 @@ func GetMessages(roomName string, limit int) ([]Message, error) {
 		}
 		msgs = append(msgs, m)
 	}
-	
-	// Eski mesajları kronolojik sıralamak için listeyi tersine çeviriyoruz
+
 	for i, j := 0, len(msgs)-1; i < j; i, j = i+1, j-1 {
 		msgs[i], msgs[j] = msgs[j], msgs[i]
 	}

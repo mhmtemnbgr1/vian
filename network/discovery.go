@@ -1,40 +1,37 @@
 package network
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
 	"time"
 )
 
-const DiscoveryPort = 8888
+// DiscoveryPort UDP keşif portu; bayrakla değiştirilebilir.
+var DiscoveryPort = 8888
 
 type DiscoveryMessage struct {
 	ServiceName string `json:"service_name"`
 	Port        int    `json:"port"`
-	HostName    string `json:"host_name"`
+	HostName    string `json:"host_name"` // oda adı
+	Owner       string `json:"owner"`     // odayı kuran kullanıcı
+	Salt        []byte `json:"salt"`      // parola türetme tuzu
 }
 
-// StartBroadcasting broadcasts the server's presence every 2 seconds
-func StartBroadcasting(tcpPort int, hostName string, stopCh <-chan struct{}) {
+// StartBroadcasting odanın varlığını 2 saniyede bir yayınlar.
+func StartBroadcasting(msg DiscoveryMessage, stopCh <-chan struct{}) error {
 	addr := &net.UDPAddr{
 		IP:   net.IPv4bcast, // 255.255.255.255
 		Port: DiscoveryPort,
 	}
-	
-	// Create UDP connection
+
 	conn, err := net.DialUDP("udp", nil, addr)
 	if err != nil {
-		fmt.Printf("Broadcast hatası: %v\n", err)
-		return
+		return err
 	}
 	defer conn.Close()
 
-	msg := DiscoveryMessage{
-		ServiceName: "vian-chat",
-		Port:        tcpPort,
-		HostName:    hostName,
-	}
 	data, _ := json.Marshal(msg)
 
 	ticker := time.NewTicker(2 * time.Second)
@@ -43,25 +40,21 @@ func StartBroadcasting(tcpPort int, hostName string, stopCh <-chan struct{}) {
 	for {
 		select {
 		case <-stopCh:
-			return
+			return nil
 		case <-ticker.C:
 			conn.Write(data)
 		}
 	}
 }
 
-// ListenForPeers listens for broadcast messages from other peers
-func ListenForPeers(peerFound func(ip string, msg DiscoveryMessage), stopCh <-chan struct{}) {
-	addr := &net.UDPAddr{
-		IP:   net.IPv4zero,
-		Port: DiscoveryPort,
-	}
-	
-	conn, err := net.ListenUDP("udp", addr)
+// ListenForPeers ağdaki oda duyurularını dinler.
+func ListenForPeers(peerFound func(ip string, msg DiscoveryMessage), stopCh <-chan struct{}) error {
+	lc := net.ListenConfig{Control: reuseAddr}
+	pc, err := lc.ListenPacket(context.Background(), "udp4", fmt.Sprintf(":%d", DiscoveryPort))
 	if err != nil {
-		fmt.Printf("Dinleme hatası: %v\n", err)
-		return
+		return err
 	}
+	conn := pc.(*net.UDPConn)
 	defer conn.Close()
 
 	go func() {
@@ -69,15 +62,15 @@ func ListenForPeers(peerFound func(ip string, msg DiscoveryMessage), stopCh <-ch
 		conn.Close()
 	}()
 
-	buf := make([]byte, 1024)
+	buf := make([]byte, 2048)
 	for {
 		n, remoteAddr, err := conn.ReadFromUDP(buf)
 		if err != nil {
-			return // Kapandıysa veya hata varsa çık
+			return nil // kapandı
 		}
 
 		var msg DiscoveryMessage
-		if err := json.Unmarshal(buf[:n], &msg); err == nil && msg.ServiceName == "vian-chat" {
+		if err := json.Unmarshal(buf[:n], &msg); err == nil && msg.ServiceName == "vian-chat" && len(msg.Salt) > 0 {
 			peerFound(remoteAddr.IP.String(), msg)
 		}
 	}
